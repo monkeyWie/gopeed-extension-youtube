@@ -14,7 +14,7 @@ gopeed.events.onResolve(async (ctx) => {
     name: video.videoDetails.title,
     files: [
       {
-        name: `video-${bestFormat.qualityLabel}${fmt}`,
+        name: `${video.videoDetails.title}.${bestFormat.qualityLabel}${fmt}`,
         size: bestFormat.contentLength,
         req: {
           url: bestFormat.url,
