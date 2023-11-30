@@ -16006,7 +16006,7 @@ gopeed$1.events.onResolve(async function (ctx) {
   ctx.res = {
     name: video.videoDetails.title,
     files: [{
-      name: "video-".concat(bestFormat.qualityLabel).concat(fmt),
+      name: "".concat(video.videoDetails.title, ".").concat(bestFormat.qualityLabel).concat(fmt),
       size: bestFormat.contentLength,
       req: {
         url: bestFormat.url
