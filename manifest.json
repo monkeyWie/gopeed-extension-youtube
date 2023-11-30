@@ -1,0 +1,43 @@
+{
+  "name": "youtube",
+  "author": "monkeyWie",
+  "title": "Youtube",
+  "description": "Youtube video download",
+  "icon": "icon.png",
+  "version": "1.0.0",
+  "homepage": "https://github.com/monkeyWie/gopeed-extension-youtube",
+  "repository": {
+    "url": "https://github.com/monkeyWie/gopeed-extension-youtube"
+  },
+  "scripts": [
+    {
+      "event": "onResolve",
+      "match": {
+        "urls": [
+          "*://youtube.com/watch/*",
+          "*://www.youtube.com/watch/*"
+        ]
+      },
+      "entry": "dist/index.js"
+    }
+  ],
+  "settings": [
+    {
+      "name": "quality",
+      "title": "Quality",
+      "description": "Video quality",
+      "type": "string",
+      "value": "highest",
+      "options": [
+        {
+          "label": "Highest",
+          "value": "highest"
+        },
+        {
+          "label": "Lowest",
+          "value": "lowest"
+        }
+      ]
+    }
+  ]
+}
