@@ -1,4 +1,6 @@
-# Gopeed Youtube Extension
+# Gopeed YouTube Extension
+
+Download YouTube videos easily with [Gopeed](https://gopeed.com).
 
 ## Install
 
