@@ -11,9 +11,6 @@ export default {
     filename: 'index.js',
     path: path.resolve(__dirname, '../dist'),
   },
-  optimization: {
-    minimize: false, // 禁用minimize
-  },
   plugins: [
     new GopeedPolyfillPlugin(),
     new CleanWebpackPlugin({
