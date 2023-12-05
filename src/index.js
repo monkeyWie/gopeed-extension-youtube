@@ -1,4 +1,3 @@
-import gopeed from 'gopeed';
 import ytdl from 'ytdl-core';
 
 // https://www.youtube.com/watch?v=aqz-KE-bpKQ
