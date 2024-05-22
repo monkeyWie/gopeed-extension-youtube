@@ -7,24 +7,54 @@ gopeed.events.onResolve(async (ctx) => {
   if (url.includes('youtu.be/')) {
     ytbUrl = new URL(url).pathname.substring(1);
   }
-  const video = await ytdl.getInfo(ytbUrl);
-  const formats = ytdl.filterFormats(video.formats, 'videoandaudio');
-  formats.sort((a, b) => b.bitrate - a.bitrate);
-  const bestFormat = gopeed.settings.quality === 'lowest' ? formats[formats.length - 1] : formats[0];
-  let fmt = '.mp4';
-  if (bestFormat.mimeType) {
-    fmt = '.' + bestFormat.mimeType.split(';')[0].split('/')[1];
-  }
-  ctx.res = {
-    name: video.videoDetails.title,
-    files: [
+  const info = await ytdl.getInfo(ytbUrl);
+  const files = [];
+  if (gopeed.settings.separateStreams === true) {
+    const videoQuality = gopeed.settings.quality === 'lowest' ? 'lowestvideo' : 'highestvideo';
+    const video = ytdl.chooseFormat(info.formats, { quality: videoQuality });
+    const audio = getFormat(info, 'audioonly');
+    files.push(
       {
-        name: `${video.videoDetails.title}.${bestFormat.qualityLabel}${fmt}`,
-        size: bestFormat.contentLength,
+        name: `${info.videoDetails.title}.${video.qualityLabel}.video${mimeTypeToExt(video.mimeType, 'mp4')}`,
+        size: video.contentLength,
         req: {
-          url: bestFormat.url,
+          url: video.url,
         },
       },
-    ],
+      {
+        name: `${info.videoDetails.title}.${audio.audioBitrate}kbps.audio${mimeTypeToExt(audio.mimeType, 'webm')}`,
+        size: audio.contentLength,
+        req: {
+          url: audio.url,
+        },
+      }
+    );
+  } else {
+    const bestFormat = getFormat(info, 'videoandaudio');
+    files.push({
+      name: `${info.videoDetails.title}.${bestFormat.qualityLabel}${mimeTypeToExt(bestFormat.mimeType, 'mp4')}`,
+      size: bestFormat.contentLength,
+      req: {
+        url: bestFormat.url,
+      },
+    });
+  }
+
+  ctx.res = {
+    name: info.videoDetails.title,
+    files,
   };
 });
+
+function getFormat(info, filter) {
+  const formats = ytdl.filterFormats(info.formats, filter);
+  formats.sort((a, b) => b.bitrate - a.bitrate);
+  return gopeed.settings.quality === 'lowest' ? formats[formats.length - 1] : formats[0];
+}
+
+function mimeTypeToExt(mimeType, fallback) {
+  if (!mimeType) {
+    return '.' + fallback;
+  }
+  return '.' + mimeType.split(';')[0].split('/')[1];
+}

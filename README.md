@@ -16,4 +16,5 @@ Create task with youtube video url, and click `Download` button, then the video 
 
 ## Useful Links
 
+- [node-ytdl-core](https://github.com/fent/node-ytdl-core)
 - [How to develop a gopeed extension](https://docs.gopeed.com/dev-extension.html)

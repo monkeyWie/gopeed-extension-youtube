@@ -4,7 +4,7 @@
   "title": "Youtube",
   "description": "Youtube video download",
   "icon": "icon.png",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "homepage": "https://github.com/monkeyWie/gopeed-extension-youtube",
   "repository": {
     "url": "https://github.com/monkeyWie/gopeed-extension-youtube"
@@ -40,6 +40,13 @@
           "value": "lowest"
         }
       ]
+    },
+    {
+      "name": "separateStreams",
+      "title": "Separate Streams",
+      "description": "Youtube highest quality video generally has separate video and audio streams, if you want to download highest quality video, you can enable this option to download video and audio separately.",
+      "type": "boolean",
+      "value": false
     }
   ]
 }
