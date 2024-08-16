@@ -1,0 +1,129 @@
+import { Innertube } from 'youtubei.js';
+
+// https://www.youtube.com/watch?v=aqz-KE-bpKQ
+// https://youtu.be/aqz-KE-bpKQ
+gopeed.events.onResolve(async (ctx) => {
+  let url = ctx.req.url;
+  let videoId;
+  if (url.includes('youtube.com/')) {
+    videoId = new URL(url).searchParams.get('v');
+  }
+  if (url.includes('youtu.be/')) {
+    videoId = url.split('/').pop();
+  }
+
+  const youtube = await Innertube.create({
+    cache: {
+      get: async (key) => {
+        const value = gopeed.storage.get(key);
+        if (!value) {
+          return;
+        }
+        const buffer = base64ToArrayBuffer(value);
+        gopeed.logger.info('get', buffer);
+        return buffer;
+      },
+      set: async (key, value) => {
+        const text = arrayBufferToBase64(value);
+        gopeed.logger.info('set', key, text);
+        gopeed.storage.set(key, text);
+      },
+      remove: async (key) => {
+        gopeed.storage.remove(key);
+      },
+    },
+    timezone: '',
+  });
+  gopeed.logger.info(youtube, videoId);
+
+  const info = await youtube.getInfo(videoId);
+  const format = info.chooseFormat({
+    type: 'video+audio',
+    quality: 'best',
+  });
+  console.log(JSON.stringify(format));
+  console.log(format.url);
+
+  const quality = gopeed.settings.quality === 'lowest' ? '360p' : 'best';
+  /**
+   * @type {Array<import('@gopeed/types').FileInfo>}
+   */
+  const files = [];
+  if (gopeed.settings.separateStreams === true) {
+    const video = info.chooseFormat({
+      type: 'video',
+      quality,
+    });
+    const audio = info.chooseFormat({
+      type: 'audio',
+      quality,
+    });
+    files.push(
+      {
+        name: `${info.basic_info.title}.${video.quality_label}.video${mimeTypeToExt(video.mime_type, 'mp4')}`,
+        size: video.content_length,
+        req: {
+          url: video.url,
+        },
+      },
+      {
+        name: `${info.basic_info.title}.${audio.quality_label}kbps.audio${mimeTypeToExt(audio.mime_type, 'webm')}`,
+        size: audio.content_length,
+        req: {
+          url: audio.url,
+        },
+      }
+    );
+  } else {
+    const bestFormat = info.chooseFormat({
+      type: 'video+audio',
+      quality,
+    });
+    files.push({
+      name: `${info.basic_info.title}.${bestFormat.quality_label}${mimeTypeToExt(bestFormat.mime_type, 'mp4')}`,
+      size: bestFormat.content_length,
+      req: {
+        url: bestFormat.url,
+        extra: {
+          header: {
+            Referer: 'https://www.youtube.com/',
+          },
+        },
+      },
+    });
+  }
+
+  ctx.res = {
+    name: info.basic_info.title,
+    files,
+  };
+});
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  // eslint-disable-next-line no-undef
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  // eslint-disable-next-line no-undef
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+function mimeTypeToExt(mimeType, fallback) {
+  if (!mimeType) {
+    return '.' + fallback;
+  }
+  return '.' + mimeType.split(';')[0].split('/')[1];
+}
