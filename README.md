@@ -14,6 +14,16 @@ Create task with youtube video url, and click `Download` button, then the video 
 
 ![](image/create.gif)
 
+### Video Quality
+
+Typically 1080p or better videos do not have audio encoded with it, this extension defaults to downloading audio and video without separation, so the video quality will all be lower than 1080p. If you want to download the highest quality video, you can choose the `audio` and `video` separately on extension settings page, and then use `ffmpeg` to merge them.
+
+- ffmpeg command
+
+```bash
+ffmpeg -i video.webm -i audio.webm -c:v copy -c:a copy output.mp4
+```
+
 ## Useful Links
 
 - [node-ytdl-core](https://github.com/fent/node-ytdl-core)

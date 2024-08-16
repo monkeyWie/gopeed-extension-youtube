@@ -28,6 +28,7 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
+    "@distube/ytdl-core": "github:monkeyWie/ytdl-core",
     "ytdl-core": "^4.11.5"
   }
 }

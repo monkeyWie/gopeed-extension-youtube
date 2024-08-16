@@ -4,7 +4,7 @@
   "title": "Youtube",
   "description": "Youtube video download",
   "icon": "icon.png",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "homepage": "https://github.com/monkeyWie/gopeed-extension-youtube",
   "repository": {
     "url": "https://github.com/monkeyWie/gopeed-extension-youtube"
@@ -17,7 +17,10 @@
           "*://youtube.com/watch/*",
           "*://m.youtube.com/watch/*",
           "*://www.youtube.com/watch/*",
-          "*://youtu.be/*"
+          "*://youtu.be/*",
+          "*://youtube.com/shorts/*",
+          "*://m.youtube.com/shorts/*",
+          "*://www.youtube.com/shorts/*"
         ]
       },
       "entry": "dist/index.js"

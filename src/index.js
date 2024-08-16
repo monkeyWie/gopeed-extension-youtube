@@ -1,11 +1,13 @@
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 
 // https://www.youtube.com/watch?v=aqz-KE-bpKQ
+// https://youtu.be/aqz-KE-bpKQ
+// https://www.youtube.com/shorts/PpsTJv2DNAU
 gopeed.events.onResolve(async (ctx) => {
   var url = ctx.req.url;
   var ytbUrl = url;
   if (url.includes('youtu.be/')) {
-    ytbUrl = new URL(url).pathname.substring(1);
+    ytbUrl = `https://www.youtube.com/watch?v=${new URL(url).pathname.substring(1)}`;
   }
   const info = await ytdl.getInfo(ytbUrl);
   const files = [];
