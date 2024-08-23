@@ -6,8 +6,11 @@ const youtube = await Innertube.create({
 const info = await youtube.getInfo('aqz-KE-bpKQ');
 
 const format = info.chooseFormat({
-  type: 'video+audio',
+  type: 'audio',
   quality: 'best',
 });
-console.log(JSON.stringify(format));
-console.log(format.url);
+
+const format_url = format.decipher(info.actions.session.player);
+const download_url = `${format_url}&cpn=${info.cpn}`;
+
+console.log(download_url);
