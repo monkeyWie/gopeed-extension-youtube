@@ -1,4 +1,5 @@
 export default {
+  plugins: [['@babel/plugin-syntax-import-attributes', { deprecatedAssertSyntax: true }]],
   presets: [
     [
       '@babel/preset-env',

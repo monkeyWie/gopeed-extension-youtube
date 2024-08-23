@@ -21,10 +21,10 @@ Typically 1080p or better videos do not have audio encoded with it, this extensi
 - ffmpeg command
 
 ```bash
-ffmpeg -i video.webm -i audio.webm -c:v copy -c:a copy output.mp4
+ffmpeg -i video.webm -i audio.mp4 -c:v copy -c:a copy output.mp4
 ```
 
 ## Useful Links
 
-- [node-ytdl-core](https://github.com/fent/node-ytdl-core)
+- [YouTube.js](https://github.com/LuanRT/YouTube.js)
 - [How to develop a gopeed extension](https://docs.gopeed.com/dev-extension.html)
