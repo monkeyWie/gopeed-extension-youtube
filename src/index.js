@@ -96,8 +96,10 @@ gopeed.events.onResolve(async (ctx) => {
 
 /**
  * Get direct download url
- * @param { import('youtubei.js').YT.VideoInfo} info
- * @param { import('youtubei.js').Misc.Format} format
+ * @typedef {Awaited<ReturnType<Innertube['getBasicInfo']>>} VideoInfo
+ * @typedef {ReturnType<VideoInfo['chooseFormat']>} Format
+ * @param {VideoInfo} info
+ * @param {Format} format
  * @returns {string}
  */
 function getDownloadUrl(info, format) {
