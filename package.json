@@ -29,6 +29,6 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
-    "youtubei.js": "^10.3.0"
+    "youtubei.js": "^12.2.0"
   }
 }
