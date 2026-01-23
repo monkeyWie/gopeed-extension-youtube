@@ -2,6 +2,8 @@
 
 Download YouTube videos easily with [Gopeed](https://gopeed.com).
 
+> Require Gopeed version >= 1.9.0
+
 ## Install
 
 Open the `Gopeed` extension page, enter `https://github.com/monkeyWie/gopeed-extension-youtube`, and click install.

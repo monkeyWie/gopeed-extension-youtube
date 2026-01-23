@@ -1,4 +1,20 @@
-import { Innertube } from 'youtubei.js';
+import { Innertube, Platform } from 'youtubei.js';
+
+Platform.shim.eval = async (data, env) => {
+  const properties = [];
+
+  if (env.n) {
+    properties.push(`n: exportedVars.nFunction("${env.n}")`);
+  }
+
+  if (env.sig) {
+    properties.push(`sig: exportedVars.sigFunction("${env.sig}")`);
+  }
+
+  const code = `${data.output}\nreturn { ${properties.join(', ')} }`;
+
+  return new Function(code)();
+};
 
 // https://www.youtube.com/watch?v=aqz-KE-bpKQ
 // https://youtu.be/aqz-KE-bpKQ
@@ -55,7 +71,7 @@ gopeed.events.onResolve(async (ctx) => {
         name: `${info.basic_info.title}.${video.quality_label}.video${mimeTypeToExt(video.mime_type, 'mp4')}`,
         size: video.content_length,
         req: {
-          url: getDownloadUrl(info, video),
+          url: await getDownloadUrl(info, video),
         },
       },
       {
@@ -65,7 +81,7 @@ gopeed.events.onResolve(async (ctx) => {
         )}`,
         size: audio.content_length,
         req: {
-          url: getDownloadUrl(info, audio),
+          url: await getDownloadUrl(info, audio),
         },
       }
     );
@@ -78,7 +94,7 @@ gopeed.events.onResolve(async (ctx) => {
       name: `${info.basic_info.title}.${bestFormat.quality_label}${mimeTypeToExt(bestFormat.mime_type, 'mp4')}`,
       size: bestFormat.content_length,
       req: {
-        url: getDownloadUrl(info, bestFormat),
+        url: await getDownloadUrl(info, bestFormat),
         extra: {
           header: {
             Referer: 'https://www.youtube.com/',
@@ -100,10 +116,10 @@ gopeed.events.onResolve(async (ctx) => {
  * @typedef {ReturnType<VideoInfo['chooseFormat']>} Format
  * @param {VideoInfo} info
  * @param {Format} format
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function getDownloadUrl(info, format) {
-  const formatUrl = format.decipher(info.actions.session.player);
+async function getDownloadUrl(info, format) {
+  const formatUrl = await format.decipher(info.actions.session.player);
   return `${formatUrl}&cpn=${info.cpn}`;
 }
 
