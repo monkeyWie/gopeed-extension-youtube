@@ -51,7 +51,9 @@ gopeed.events.onResolve(async (ctx) => {
 
   const quality = gopeed.settings.quality === 'lowest' ? '360p' : 'best';
 
-  const info = await youtube.getInfo(videoId);
+  const info = await youtube.getInfo(videoId, { client: 'WEB_EMBEDDED' });
+
+  gopeed.logger.info(`Video info: ${JSON.stringify(info)}`);
 
   /**
    * @type {Array<import('@gopeed/types').FileInfo>}
