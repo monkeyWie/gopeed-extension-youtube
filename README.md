@@ -18,7 +18,12 @@ Create task with youtube video url, and click `Download` button, then the video 
 
 ### Video Quality
 
-Typically 1080p or better videos do not have audio encoded with it, this extension defaults to downloading audio and video without separation, so the video quality will all be lower than 1080p. If you want to download the highest quality video, you can choose the `audio` and `video` separately on extension settings page, and then use `ffmpeg` to merge them.
+Typically 1080p or better YouTube videos use separate video and audio streams. This extension downloads YouTube media in that separated form by default, so the video file you get is the video track only. If you want a single merged file, use `ffmpeg` to combine the downloaded audio and video.
+
+The extension settings now include:
+
+- `quality`: target video resolution, such as `1080p`, `1440p`, `2160p`, `best`, or `lowest`
+- `qualityFallback`: when the requested resolution is not available, fall back to the highest available video quality
 
 - ffmpeg command
 

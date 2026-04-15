@@ -1,155 +1,115 @@
-import { Innertube, Platform } from 'youtubei.js';
+import { getFileExtension, prepareSabrStreams } from './lib/sabr/index.js';
 
-Platform.shim.eval = async (data, env) => {
-  const properties = [];
+function sanitizeFileName(value) {
+  // eslint-disable-next-line no-control-regex
+  return (value || 'youtube').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim();
+}
 
-  if (env.n) {
-    properties.push(`n: exportedVars.nFunction("${env.n}")`);
+async function executePoTokenExpression(expression) {
+  const page = await gopeed.runtime.webview.open({
+    headless: true,
+    title: 'gopeed-youtube-sabr',
+    width: 1280,
+    height: 800,
+  });
+  try {
+    await page.navigate('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
+    return await page.execute(expression);
+  } finally {
+    await page.close();
+  }
+}
+
+function getSetting(name, fallback) {
+  const value = gopeed.settings?.[name];
+  return value === undefined || value === null || value === '' ? fallback : value;
+}
+
+function getBooleanSetting(name, fallback = false) {
+  const value = gopeed.settings?.[name];
+
+  if (value === undefined || value === null || value === '') {
+    return fallback;
   }
 
-  if (env.sig) {
-    properties.push(`sig: exportedVars.sigFunction("${env.sig}")`);
+  if (typeof value === 'boolean') {
+    return value;
   }
 
-  const code = `${data.output}\nreturn { ${properties.join(', ')} }`;
+  if (typeof value === 'string') {
+    return value === 'true';
+  }
 
-  return new Function(code)();
-};
+  return Boolean(value);
+}
 
-// https://www.youtube.com/watch?v=aqz-KE-bpKQ
-// https://youtu.be/aqz-KE-bpKQ
+function getContentLength(value) {
+  const length = Number(value);
+  return Number.isFinite(length) && length > 0 ? length : undefined;
+}
+
 gopeed.events.onResolve(async (ctx) => {
-  let url = ctx.req.url;
-  let videoId;
-  if (url.includes('youtube.com/')) {
-    videoId = new URL(url).searchParams.get('v');
-  }
-  if (url.includes('youtu.be/') || url.includes('youtube.com/shorts/')) {
-    videoId = url.split('/').pop();
-  }
+  const input = ctx.req.url;
 
-  const youtube = await Innertube.create({
-    cache: {
-      get: async (key) => {
-        const value = gopeed.storage.get(key);
-        if (!value) {
-          return;
-        }
-        const buffer = base64ToArrayBuffer(value);
-        return buffer;
-      },
-      set: async (key, value) => {
-        const text = arrayBufferToBase64(value);
-        gopeed.storage.set(key, text);
-      },
-      remove: async (key) => {
-        gopeed.storage.remove(key);
-      },
-    },
-    timezone: '',
+  gopeed.logger.info(`Resolving YouTube URL: ${input}`);
+
+  const quality = String(getSetting('quality', '1080p'));
+  const fallbackToBest = getBooleanSetting('qualityFallback', false);
+
+  const prepared = await prepareSabrStreams({
+    input,
+    quality,
+    preferWebM: false,
+    preferH264: true,
+    fallbackToBest,
   });
 
-  const quality = gopeed.settings.quality === 'lowest' ? '360p' : 'best';
+  gopeed.logger.info(`Prepared SABR streams for videoId: ${prepared.videoId}`);
 
-  const info = await youtube.getInfo(videoId, { client: 'WEB_EMBEDDED' });
+  const poToken = await executePoTokenExpression(prepared.poTokenExpression);
 
-  gopeed.logger.info(`Video info: ${JSON.stringify(info)}`);
+  gopeed.logger.info(`Obtained PO token of length ${poToken.length} for videoId: ${prepared.videoId}`);
 
-  /**
-   * @type {Array<import('@gopeed/types').FileInfo>}
-   */
-  const files = [];
-  if (gopeed.settings.separateStreams === true) {
-    const video = info.chooseFormat({
-      type: 'video',
-      quality,
-    });
-    const audio = info.chooseFormat({
-      type: 'audio',
-      quality,
-    });
-    files.push(
-      {
-        name: `${info.basic_info.title}.${video.quality_label}.video${mimeTypeToExt(video.mime_type, 'mp4')}`,
-        size: video.content_length,
-        req: {
-          url: await getDownloadUrl(info, video),
-        },
-      },
-      {
-        name: `${info.basic_info.title}.${parseInt(audio.bitrate / 1000)}kbps.audio${mimeTypeToExt(
-          audio.mime_type,
-          'webm'
-        )}`,
-        size: audio.content_length,
-        req: {
-          url: await getDownloadUrl(info, audio),
-        },
-      }
-    );
-  } else {
-    const bestFormat = info.chooseFormat({
-      type: 'video+audio',
-      quality,
-    });
-    files.push({
-      name: `${info.basic_info.title}.${bestFormat.quality_label}${mimeTypeToExt(bestFormat.mime_type, 'mp4')}`,
-      size: bestFormat.content_length,
-      req: {
-        url: await getDownloadUrl(info, bestFormat),
-        extra: {
-          header: {
-            Referer: 'https://www.youtube.com/',
-          },
-        },
-      },
-    });
-  }
+  const result = await prepared.open(poToken);
+
+  gopeed.logger.info(`Opened SABR streams result`);
+  gopeed.logger.info(
+    `Selected formats: video=${result.selectedFormats.videoFormat.itag} ${result.selectedFormats.videoFormat.mimeType}, audio=${result.selectedFormats.audioFormat.itag} ${result.selectedFormats.audioFormat.mimeType}`
+  );
+
+  const title = result.info?.basic_info?.title || result.info?.video_details?.title || prepared.videoId;
+  const baseName = sanitizeFileName(title);
+  const videoExtension = getFileExtension(result.selectedFormats.videoFormat.mimeType, 'mp4');
+  const audioExtension = getFileExtension(result.selectedFormats.audioFormat.mimeType, 'm4a');
+  gopeed.logger.info(
+    `Resolved output names: video=${baseName}.video.${videoExtension}, audio=${baseName}.audio.${audioExtension}`
+  );
+
+  gopeed.logger.info(`Creating object URL for video stream`);
+  const videoUrl = URL.createObjectURL(result.videoStream);
+  gopeed.logger.info(`Created video object URL`);
+
+  gopeed.logger.info(`Creating object URL for audio stream`);
+  const audioUrl = URL.createObjectURL(result.audioStream);
+  gopeed.logger.info(`Created audio object URL`);
 
   ctx.res = {
-    name: info.basic_info.title,
-    files,
+    name: baseName,
+    files: [
+      {
+        name: `${baseName}.video.${videoExtension}`,
+        req: {
+          url: videoUrl,
+        },
+        size: getContentLength(result.selectedFormats.videoFormat.contentLength),
+      },
+      {
+        name: `${baseName}.audio.${audioExtension}`,
+        req: {
+          url: audioUrl,
+        },
+        size: getContentLength(result.selectedFormats.audioFormat.contentLength),
+      },
+    ],
   };
 });
-
-/**
- * Get direct download url
- * @typedef {Awaited<ReturnType<Innertube['getBasicInfo']>>} VideoInfo
- * @typedef {ReturnType<VideoInfo['chooseFormat']>} Format
- * @param {VideoInfo} info
- * @param {Format} format
- * @returns {Promise<string>}
- */
-async function getDownloadUrl(info, format) {
-  const formatUrl = await format.decipher(info.actions.session.player);
-  return `${formatUrl}&cpn=${info.cpn}`;
-}
-
-function arrayBufferToBase64(buffer) {
-  let binary = '';
-  // eslint-disable-next-line no-undef
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToArrayBuffer(base64) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  // eslint-disable-next-line no-undef
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-function mimeTypeToExt(mimeType, fallback) {
-  if (!mimeType) {
-    return '.' + fallback;
-  }
-  return '.' + mimeType.split(';')[0].split('/')[1];
-}

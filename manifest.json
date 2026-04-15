@@ -30,13 +30,37 @@
     {
       "name": "quality",
       "title": "Quality",
-      "description": "Video quality",
+      "description": "Target video resolution, such as 1080p, 1440p, 2160p, best, or lowest.",
       "type": "string",
-      "value": "highest",
+      "value": "1080p",
       "options": [
         {
-          "label": "Highest",
-          "value": "highest"
+          "label": "4k (2160p)",
+          "value": "2160p"
+        },
+        {
+          "label": "2k (1440p)",
+          "value": "1440p"
+        },
+        {
+          "label": "1080p",
+          "value": "1080p"
+        },
+        {
+          "label": "720p",
+          "value": "720p"
+        },
+        {
+          "label": "480p",
+          "value": "480p"
+        },
+        {
+          "label": "360p",
+          "value": "360p"
+        },
+        {
+          "label": "Best",
+          "value": "best"
         },
         {
           "label": "Lowest",
@@ -45,11 +69,11 @@
       ]
     },
     {
-      "name": "separateStreams",
-      "title": "Separate Streams",
-      "description": "Youtube highest quality video generally has separate video and audio streams, if you want to download highest quality video, you can enable this option to download video and audio separately.",
+      "name": "qualityFallback",
+      "title": "Fallback When Missing",
+      "description": "When the requested resolution does not exist, fall back to the highest available video quality.",
       "type": "boolean",
-      "value": false
+      "value": true
     }
   ]
 }
