@@ -13,7 +13,7 @@ async function executePoTokenExpression(expression) {
     height: 800,
   });
   try {
-    await page.navigate('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
+    await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
     return await page.execute(expression);
   } finally {
     await page.close();
