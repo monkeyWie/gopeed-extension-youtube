@@ -31,7 +31,14 @@ function setup({ available = true, missingFFmpeg = false, prepareError, playlist
     runtime: {
       webview: {
         isAvailable: () => available,
-        open: async () => ({ goto: async () => {}, execute: async () => 'token', close: async () => {} }),
+        open: async () => ({
+          goto: async () => {},
+          execute: async () => ({
+            poToken: 'token',
+            player: { id: 'test-player', timestamp: 123, data: { output: 'script' } },
+          }),
+          close: async () => {},
+        }),
       },
       blob: {
         createObjectURL: async (open, options) => {
@@ -68,24 +75,29 @@ function setup({ available = true, missingFFmpeg = false, prepareError, playlist
     },
     MessageError,
     ReadableStream,
-    prepareSabrStreams: async () => {
+    prepareSabrStreams: async (options) => {
+      assert.equal(options.withPlayer, false);
       if (prepareError) throw prepareError;
       calls.sessions++;
       return {
         poTokenExpression: '',
-        prepareSession: async () => ({
-          info: { basic_info: { title: 'Video: title' } },
-          openStreams: async () => {
-            calls.opens++;
-            return {
-              videoStream: track(),
-              audioStream: track(),
-              abort: () => {
-                calls.aborts++;
-              },
-            };
-          },
-        }),
+        prepareSession: async (verification) => {
+          assert.equal(verification.poToken, 'token');
+          assert.equal(verification.player.id, 'test-player');
+          return {
+            info: { basic_info: { title: 'Video: title' } },
+            openStreams: async () => {
+              calls.opens++;
+              return {
+                videoStream: track(),
+                audioStream: track(),
+                abort: () => {
+                  calls.aborts++;
+                },
+              };
+            },
+          };
+        },
       };
     },
   });

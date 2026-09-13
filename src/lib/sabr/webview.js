@@ -1,3 +1,4 @@
+import { Player } from 'youtubei.js/web';
 import { BotGuardClient } from 'bgutils-js/botguard';
 import { WebPoMinter } from 'bgutils-js/webpo';
 import { buildURL, getHeaders, parseLooseJSON } from 'bgutils-js/utils';
@@ -48,4 +49,14 @@ export async function mint(videoId, requestKey) {
   } finally {
     await client.shutdown().catch(() => {});
   }
+}
+
+// Return only the extracted script and metadata; the AST stays in this page.
+export async function prepare(videoId, requestKey) {
+  const player = await Player.create(undefined);
+  const poToken = await mint(videoId, requestKey);
+  return {
+    poToken,
+    player: { id: player.player_id, timestamp: player.signature_timestamp, data: player.data },
+  };
 }

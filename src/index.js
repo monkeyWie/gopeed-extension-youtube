@@ -75,9 +75,16 @@ function requireRuntime() {
 }
 
 async function prepareSession(input, quality, fallbackToBest) {
-  const prepared = await prepareSabrStreams({ input, quality, preferWebM: false, preferH264: true, fallbackToBest });
-  const poToken = await executePoTokenExpression(prepared.poTokenExpression);
-  return await prepared.prepareSession(poToken);
+  const prepared = await prepareSabrStreams({
+    input,
+    quality,
+    preferWebM: false,
+    preferH264: true,
+    fallbackToBest,
+    withPlayer: false,
+  });
+  const verification = await executePoTokenExpression(prepared.poTokenExpression);
+  return await prepared.prepareSession(verification);
 }
 
 function abortableOutput(stream, abort) {

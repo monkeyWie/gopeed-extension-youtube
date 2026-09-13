@@ -61,3 +61,24 @@ test('verification uses the page challenge and EVENT_ID and shuts down the VM', 
   assert.equal(shutdown, true);
   assert.deepEqual(requests, ['https://www.youtube.com/', 'https://example.com/integrity']);
 });
+
+test('player preparation returns only the extracted result with the token', async () => {
+  const scope = {
+    Player: {
+      create: async () => ({
+        player_id: 'player-id',
+        signature_timestamp: 123,
+        data: { output: 'extracted', exported: ['nsigFunction'] },
+        ast: { large: true },
+      }),
+    },
+  };
+  vm.createContext(scope);
+  vm.runInContext(source, scope);
+  scope.mint = async (id) => `token:${id}`;
+  const result = await scope.prepare('video-id', 'key');
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    poToken: 'token:video-id',
+    player: { id: 'player-id', timestamp: 123, data: { output: 'extracted', exported: ['nsigFunction'] } },
+  });
+});

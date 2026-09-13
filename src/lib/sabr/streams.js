@@ -1,4 +1,4 @@
-import { Constants } from 'youtubei.js';
+import { Constants, Player } from 'youtubei.js';
 import { SabrStream } from 'googlevideo/sabr-stream';
 import { buildSabrFormat, EnabledTrackTypes } from 'googlevideo/utils';
 
@@ -148,15 +148,16 @@ export async function prepareSabrStreams({
   preferWebM = false,
   preferH264 = true,
   fallbackToBest = false,
+  withPlayer = true,
 } = {}) {
   if (!input) {
     throw new MessageError('Missing YouTube URL or videoId');
   }
 
   const videoId = extractVideoId(input);
-  const yt = await createLocalApiInnertube();
+  const yt = await createLocalApiInnertube({ withPlayer });
   const context = yt.session.context;
-  const poTokenExpression = createPoTokenExpression({ videoId, context });
+  const poTokenExpression = createPoTokenExpression({ videoId, context, includePlayer: !withPlayer });
 
   const prepared = {
     __sabrPrepared: true,
@@ -170,7 +171,20 @@ export async function prepareSabrStreams({
     poTokenExpression,
     yt,
     open: async (poToken) => await openPreparedSabrStreamsInternal(prepared, poToken),
-    prepareSession: async (poToken) => await preparePreparedSabrSessionInternal(prepared, poToken),
+    prepareSession: async (verification) => {
+      if (typeof verification === 'string' && yt.session.player) {
+        return await preparePreparedSabrSessionInternal(prepared, verification);
+      }
+      const { player, poToken } = verification || {};
+      if (!player?.id || !Number.isFinite(player.timestamp) || typeof player.data?.output !== 'string' || !poToken) {
+        throw new MessageError('YouTube player preparation returned an invalid result.');
+      }
+      yt.session.player = await Player.fromSource(player.id, {
+        signature_timestamp: player.timestamp,
+        data: player.data,
+      });
+      return await preparePreparedSabrSessionInternal(prepared, poToken);
+    },
   };
 
   return prepared;

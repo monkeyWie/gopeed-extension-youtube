@@ -56,6 +56,7 @@ export function buildPoTokenExpression({
   context,
   bgutilsBundleSource: bundleSource = bgutilsBundleSource,
   requestKey = DEFAULT_REQUEST_KEY,
+  includePlayer = false,
 }) {
   if (!videoId) {
     throw new MessageError('videoId is required');
@@ -71,14 +72,17 @@ export function buildPoTokenExpression({
 
   return `(async () => {
 ${bundleSource}
-return await GopeedBgutils.mint(${JSON.stringify(videoId)}, ${JSON.stringify(requestKey)});
+return await GopeedBgutils.${includePlayer ? 'prepare' : 'mint'}(${JSON.stringify(videoId)}, ${JSON.stringify(
+    requestKey
+  )});
 })()`;
 }
 
-export function createPoTokenExpression({ videoId, context } = {}) {
+export function createPoTokenExpression({ videoId, context, includePlayer = false } = {}) {
   return buildPoTokenExpression({
     videoId,
     context,
+    includePlayer,
   });
 }
 
