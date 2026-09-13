@@ -123,7 +123,7 @@ const start = async (env, res) => {
   await env.events.onStart({ task: makeTask(res.files[0].req) });
 };
 
-test('one unnamed MP4 resource consumes one combined SABR session and releases it', async () => {
+test('one unnamed MP4 resource consumes one SABR stream pair and releases it', async () => {
   const env = setup(),
     res = await resolve(env);
   assert.equal(res.name, undefined);

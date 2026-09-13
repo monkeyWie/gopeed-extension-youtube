@@ -1,5 +1,6 @@
-import { Constants, Player } from 'youtubei.js';
+import { Constants, Player, Utils } from 'youtubei.js';
 import { SabrStream } from 'googlevideo/sabr-stream';
+import { BoundedSabrStream } from './bounded-stream.js';
 import { buildSabrFormat, EnabledTrackTypes } from 'googlevideo/utils';
 
 import { createLocalApiInnertube, createPoTokenExpression, extractVideoId, selectVideoFormat } from './common.js';
@@ -84,7 +85,9 @@ async function preparePreparedSabrSessionInternal(prepared, poToken) {
   });
 
   const start = async (enabledTrackTypes = EnabledTrackTypes.VIDEO_AND_AUDIO) => {
-    const sabr = new SabrStream(sabrConfig);
+    const trackUrl = new URL(sabrConfig.serverAbrStreamingUrl);
+    trackUrl.searchParams.set('cpn', Utils.generateRandomString(16));
+    const sabr = new BoundedSabrStream({ ...sabrConfig, serverAbrStreamingUrl: trackUrl.toString() });
     const streams = await sabr.start({
       videoFormat: selectedFormats.videoFormat,
       audioFormat: selectedFormats.audioFormat,
@@ -107,7 +110,20 @@ async function preparePreparedSabrSessionInternal(prepared, poToken) {
     info,
     context: prepared.yt.session.context,
     selectedFormats,
-    openStreams: async () => await start(),
+    openStreams: async () => {
+      const video = await start(EnabledTrackTypes.VIDEO_ONLY);
+      try {
+        const audio = await start(EnabledTrackTypes.AUDIO_ONLY);
+        return {
+          videoStream: video.videoStream,
+          audioStream: audio.audioStream,
+          abort: () => { video.abort(); audio.abort(); },
+        };
+      } catch (error) {
+        video.abort();
+        throw error;
+      }
+    },
     openVideoStream: async () => {
       const streams = await start(EnabledTrackTypes.VIDEO_ONLY);
       return {
