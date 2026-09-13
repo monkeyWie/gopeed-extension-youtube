@@ -25,16 +25,23 @@ function sanitizeFileName(value) {
 }
 
 async function executePoTokenExpression(expression) {
-  const page = await gopeed.runtime.webview.open({
+  const options = {
     headless: true,
     title: 'gopeed-youtube-sabr',
-    // Android's default WebView UA receives no integrity token from YouTube.
-    userAgent: DEFAULT_BROWSER_USER_AGENT,
     width: 1280,
     height: 800,
-  });
+  };
+  let page = await gopeed.runtime.webview.open(options);
   try {
     await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
+    const userAgent = await page.execute('() => navigator.userAgent');
+    if (/Android/i.test(userAgent)) {
+      // Android's WebView UA gets no integrity token. Keep the native UA on
+      // WebKit platforms: pretending to be Chrome invalidates attestation.
+      await page.close();
+      page = await gopeed.runtime.webview.open({ ...options, userAgent: DEFAULT_BROWSER_USER_AGENT });
+      await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
+    }
     await syncWebViewCookies(page);
     return await page.execute(expression);
   } finally {

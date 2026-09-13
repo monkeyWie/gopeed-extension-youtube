@@ -5,11 +5,11 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
 class MessageError extends Error {}
-function setup({ available = true, missingFFmpeg = false, prepareError, playlist, streamError, metadataError } = {}) {
+function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', available = true, missingFFmpeg = false, prepareError, playlist, streamError, metadataError } = {}) {
   const events = {},
     openers = new Map(),
     revoked = [],
-    calls = { sessions: 0, opens: 0, aborts: 0 };
+    calls = { sessions: 0, opens: 0, aborts: 0, webviewOptions: [], pageCloses: 0 };
   const track = () =>
     new ReadableStream({
       start(c) {
@@ -32,14 +32,18 @@ function setup({ available = true, missingFFmpeg = false, prepareError, playlist
       webview: {
         isAvailable: () => available,
         open: async (options) => {
-          assert.equal(options.userAgent, 'desktop-browser-test');
+          calls.webviewOptions.push(options);
+          let loaded = false;
           return {
-            goto: async () => {},
-            execute: async () => ({
-              poToken: 'token',
-              player: { id: 'test-player', timestamp: 123, data: { output: 'script' } },
-            }),
-            close: async () => {},
+            goto: async () => { loaded = true; },
+            execute: async (expression) => {
+              assert.equal(loaded, true, 'navigate before executing on a new WebView');
+              return expression === '() => navigator.userAgent' ? browserUA : {
+                poToken: 'token',
+                player: { id: 'test-player', timestamp: 123, data: { output: 'script' } },
+              };
+            },
+            close: async () => { calls.pageCloses++; },
           };
         },
       },
@@ -317,4 +321,27 @@ test('metadata resolution disables player parsing and uses only basic info', asy
   vm.createContext(scope);
   vm.runInContext(source, scope);
   assert.equal((await scope.resolveVideo('https://youtu.be/dQw4w9WgXcQ')).title, 'Title');
+});
+
+test('verification preserves the native UA on WebKit and desktop browsers', async () => {
+  for (const browserUA of [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0',
+  ]) {
+    const env = setup({ browserUA });
+    await start(env, await resolve(env));
+    assert.equal(env.calls.webviewOptions.length, 1);
+    assert.equal(env.calls.webviewOptions[0].userAgent, undefined);
+    assert.equal(env.calls.pageCloses, 1);
+  }
+});
+
+test('only Android reopens the verification page with the desktop UA', async () => {
+  const env = setup({ browserUA: 'Mozilla/5.0 (Linux; Android 16; device; wv) AppleWebKit/537.36 Version/4.0 Chrome/151.0.0.0 Mobile Safari/537.36' });
+  await start(env, await resolve(env));
+  assert.equal(env.calls.webviewOptions.length, 2);
+  assert.equal(env.calls.webviewOptions[0].userAgent, undefined);
+  assert.equal(env.calls.webviewOptions[1].userAgent, 'desktop-browser-test');
+  assert.equal(env.calls.pageCloses, 2);
 });
