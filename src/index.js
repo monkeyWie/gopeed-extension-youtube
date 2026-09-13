@@ -1,8 +1,26 @@
-import { getFileExtension, prepareSabrStreams } from './lib/sabr/index.js';
+import { syncWebViewCookies } from './lib/cookies.js';
+import './polyfills.js';
+import { resolveVideo } from './lib/video.js';
+import { extractPlaylistId, resolvePlaylist } from './lib/playlist.js';
+import { prepareSabrStreams } from './lib/sabr/index.js';
+
+function messageError(error) {
+  return error instanceof MessageError ? error : new MessageError(`YouTube: ${error?.message || String(error)}`);
+}
+
+function userFacing(handler) {
+  return async (...args) => {
+    try {
+      return await handler(...args);
+    } catch (error) {
+      throw messageError(error);
+    }
+  };
+}
 
 function sanitizeFileName(value) {
   // eslint-disable-next-line no-control-regex
-  return (value || 'youtube').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim();
+  return (value || 'youtube').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'youtube';
 }
 
 async function executePoTokenExpression(expression) {
@@ -14,6 +32,7 @@ async function executePoTokenExpression(expression) {
   });
   try {
     await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
+    await syncWebViewCookies(page);
     return await page.execute(expression);
   } finally {
     await page.close();
@@ -43,91 +62,168 @@ function getBooleanSetting(name, fallback = false) {
   return Boolean(value);
 }
 
-function getContentLength(value) {
-  const length = Number(value);
-  return Number.isFinite(length) && length > 0 ? length : undefined;
+function requireRuntime() {
+  if (
+    typeof gopeed.runtime?.ffmpeg?.merge !== 'function' ||
+    typeof gopeed.runtime?.blob?.createObjectURL !== 'function'
+  ) {
+    throw new MessageError('Please upgrade Gopeed to a build with FFmpeg WASM and Blob support.');
+  }
+  if (typeof gopeed.runtime?.webview?.isAvailable !== 'function' || !gopeed.runtime.webview.isAvailable()) {
+    throw new MessageError('YouTube SABR downloads require an available Gopeed WebView runtime.');
+  }
 }
 
-function createAbortableReadableStream(stream, onCancel) {
-  let reader;
+async function prepareSession(input, quality, fallbackToBest) {
+  const prepared = await prepareSabrStreams({ input, quality, preferWebM: false, preferH264: true, fallbackToBest });
+  const poToken = await executePoTokenExpression(prepared.poTokenExpression);
+  return await prepared.prepareSession(poToken);
+}
 
+function abortableOutput(stream, abort) {
+  const reader = stream.getReader();
+  let stopped = false;
+  function finish() {
+    if (stopped) return;
+    stopped = true;
+    try {
+      abort();
+    } finally {
+      reader.releaseLock();
+    }
+  }
   return new ReadableStream({
-    start() {
-      reader = stream.getReader();
-    },
     async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
+      try {
+        const { done, value } = await reader.read();
+        if (stopped) return;
+        if (done) {
+          controller.close();
+          finish();
+        } else controller.enqueue(value);
+      } catch (error) {
+        if (!stopped) {
+          controller.error(messageError(error));
+          finish();
+        }
       }
-      controller.enqueue(value);
     },
-    cancel(reason) {
-      if (typeof onCancel === 'function') {
-        onCancel();
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        finish();
       }
-      return reader?.cancel(reason);
     },
   });
 }
 
-async function createStreamObjectURL(openStream, format) {
+async function createMergedURL(labels, initialSession) {
+  const { input, quality, fallbackToBest } = labels;
+  let firstSession = initialSession;
   return await gopeed.runtime.blob.createObjectURL(
-    async () => {
-      const { stream, abort } = await openStream();
-      return createAbortableReadableStream(stream, abort);
-    },
-    {
-      contentType: format.mimeType,
-      size: getContentLength(format.contentLength),
-    }
+    userFacing(async () => {
+      // Each open starts a fresh SABR producer; stream readers are never reused.
+      const session = await (firstSession ? firstSession() : prepareSession(input, quality, fallbackToBest === 'true'));
+      firstSession = undefined;
+      const { videoStream, audioStream, abort } = await session.openStreams();
+      try {
+        return abortableOutput(gopeed.runtime.ffmpeg.merge({ video: videoStream, audio: audioStream }), abort);
+      } catch (error) {
+        abort();
+        throw error;
+      }
+    }),
+    { contentType: 'video/mp4', range: false }
   );
 }
 
-gopeed.events.onResolve(async (ctx) => {
-  const input = ctx.req.url;
-
-  const quality = String(getSetting('quality', '1080p'));
-  const fallbackToBest = getBooleanSetting('fallbackToBest', false);
-
-  const prepared = await prepareSabrStreams({
-    input,
-    quality,
-    preferWebM: false,
-    preferH264: true,
-    fallbackToBest,
+async function refreshMergedURL(task) {
+  requireRuntime();
+  const req = task.meta.req;
+  const previous = req.url;
+  let session;
+  let failure = new MessageError('YouTube download preparation did not complete.');
+  // onStart errors do not stop the downloader: install a fail-closed URL first.
+  const next = await createMergedURL(req.labels, async () => {
+    if (!session) throw failure;
+    return session;
   });
+  try {
+    await task.setUrl(next);
+  } catch (error) {
+    await gopeed.runtime.blob.revokeObjectURL(next);
+    throw error;
+  }
+  try {
+    if (previous !== req.labels.input) await gopeed.runtime.blob.revokeObjectURL(previous);
+  } catch (_) {
+    /* A registration from a previous Gopeed process has expired. */
+  }
+  try {
+    session = await prepareSession(req.labels.input, req.labels.quality, req.labels.fallbackToBest === 'true');
+  } catch (error) {
+    failure = messageError(error);
+    throw failure;
+  }
+}
 
-  const poToken = await executePoTokenExpression(prepared.poTokenExpression);
+gopeed.events.onResolve(
+  userFacing(async (ctx) => {
+    requireRuntime();
+    const input = ctx.req.url;
+    const quality = String(getSetting('quality', '1080p'));
+    const fallbackToBest = getBooleanSetting('fallbackToBest', true);
+    const playlistId = extractPlaylistId(input);
+    if (playlistId) {
+      const playlist = await resolvePlaylist(playlistId);
+      const files = playlist.videos.map((video) => {
+        const input = `https://www.youtube.com/watch?v=${video.id}`;
+        const labels = {
+          [gopeed.info.identity]: '1',
+          input,
+          quality,
+          fallbackToBest: String(fallbackToBest),
+          type: 'merged',
+        };
+        return {
+          name: `${video.index}. ${sanitizeFileName(video.title)}.mp4`,
+          req: { url: input, rawUrl: input, labels },
+        };
+      });
+      ctx.res = { name: sanitizeFileName(playlist.title), range: false, files };
+      return;
+    }
 
-  const session = await prepared.prepareSession(poToken);
+    const { title } = await resolveVideo(input);
+    const labels = {
+      [gopeed.info.identity]: '1',
+      input,
+      quality,
+      fallbackToBest: String(fallbackToBest),
+      type: 'merged',
+    };
+    ctx.res = {
+      range: false,
+      files: [{ name: `${sanitizeFileName(title)}.mp4`, req: { url: input, rawUrl: input, labels } }],
+    };
+  })
+);
 
-  const title = session.info?.basic_info?.title || session.info?.video_details?.title || prepared.videoId;
-  const baseName = sanitizeFileName(title);
-  const videoExtension = getFileExtension(session.selectedFormats.videoFormat.mimeType, 'mp4');
-  const audioExtension = getFileExtension(session.selectedFormats.audioFormat.mimeType, 'm4a');
+gopeed.events.onStart(
+  userFacing(async (ctx) => {
+    const req = ctx.task.meta.req;
+    if (req.labels.type !== 'merged') return;
+    requireRuntime();
+    await refreshMergedURL(ctx.task);
+  })
+);
 
-  const videoUrl = await createStreamObjectURL(session.openVideoStream, session.selectedFormats.videoFormat);
-  const audioUrl = await createStreamObjectURL(session.openAudioStream, session.selectedFormats.audioFormat);
-
-  ctx.res = {
-    name: baseName,
-    files: [
-      {
-        name: `${baseName}.video.${videoExtension}`,
-        req: {
-          url: videoUrl,
-        },
-        size: getContentLength(session.selectedFormats.videoFormat.contentLength),
-      },
-      {
-        name: `${baseName}.audio.${audioExtension}`,
-        req: {
-          url: audioUrl,
-        },
-        size: getContentLength(session.selectedFormats.audioFormat.contentLength),
-      },
-    ],
-  };
-});
+gopeed.events.onError(
+  userFacing(async (ctx) => {
+    const req = ctx.task.meta.req;
+    if (req.labels.type !== 'merged' || req.labels.retried === '1') return;
+    await req.putLabel('retried', '1');
+    await ctx.task.continue();
+  })
+);

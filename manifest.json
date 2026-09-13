@@ -2,9 +2,9 @@
   "name": "youtube",
   "author": "monkeyWie",
   "title": "Youtube",
-  "description": "Youtube video download",
+  "description": "Download YouTube videos, playlists, and Shorts in up to 8K quality when available.",
   "icon": "icon.png",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "homepage": "https://github.com/monkeyWie/gopeed-extension-youtube",
   "repository": {
     "url": "https://github.com/monkeyWie/gopeed-extension-youtube"
@@ -20,8 +20,25 @@
           "*://youtu.be/*",
           "*://youtube.com/shorts/*",
           "*://m.youtube.com/shorts/*",
-          "*://www.youtube.com/shorts/*"
+          "*://www.youtube.com/shorts/*",
+          "*://youtube.com/playlist*",
+          "*://www.youtube.com/playlist*",
+          "*://m.youtube.com/playlist*"
         ]
+      },
+      "entry": "dist/index.js"
+    },
+    {
+      "event": "onStart",
+      "match": {
+        "labels": ["monkeyWie@youtube"]
+      },
+      "entry": "dist/index.js"
+    },
+    {
+      "event": "onError",
+      "match": {
+        "labels": ["monkeyWie@youtube"]
       },
       "entry": "dist/index.js"
     }
@@ -30,10 +47,14 @@
     {
       "name": "quality",
       "title": "Quality",
-      "description": "Target video resolution, such as 1080p, 1440p, 2160p, best, or lowest.",
+      "description": "Choose your preferred video quality, up to 8K when available.",
       "type": "string",
       "value": "1080p",
       "options": [
+        {
+          "label": "8K (4320p)",
+          "value": "4320p"
+        },
         {
           "label": "4k (2160p)",
           "value": "2160p"
@@ -74,6 +95,13 @@
       "description": "When the requested resolution does not exist, fall back to the highest available video quality.",
       "type": "boolean",
       "value": true
+    },
+    {
+      "name": "cookie",
+      "title": "YouTube Cookie (Optional)",
+      "description": "Paste the Cookie request header from YouTube to use your account. Leave empty to download without signing in.",
+      "type": "string",
+      "value": ""
     }
   ]
 }

@@ -1,8 +1,16 @@
 # Gopeed YouTube Extension
 
-Download YouTube videos easily with [Gopeed](https://gopeed.com).
+Download YouTube videos and playlists with [Gopeed](https://gopeed.com).
 
-> Require Gopeed version >= 1.9.0
+> Requires Gopeed version >= 2.0.0.
+
+## Features
+
+- **Videos and Shorts** — Download regular YouTube videos and Shorts.
+- **Playlists** — Load a playlist and select the videos you want to download.
+- **Up to 8K** — Download in up to 8K resolution when available in the source video.
+- **Automatic audio/video merging** — FFmpeg combines separate video and audio tracks into a single MP4, with no manual steps.
+- **Quality selection** — Choose your preferred resolution or select **Best** for the highest available quality.
 
 ## Install
 
@@ -12,24 +20,27 @@ Open the `Gopeed` extension page, enter `https://github.com/monkeyWie/gopeed-ext
 
 ## Usage
 
-Create task with youtube video url, and click `Download` button, then the video will be resolved and ready to download.
+Open Gopeed's **Create Task** panel, paste a YouTube URL, and click **Download**. The following three URL formats are supported (replace the placeholder IDs with those from your actual link):
+
+| Type | Example URL |
+| --- | --- |
+| Video | `https://www.youtube.com/watch?v=VIDEO_ID` |
+| Playlist | `https://www.youtube.com/playlist?list=PLAYLIST_ID` |
+| Shorts | `https://www.youtube.com/shorts/VIDEO_ID` |
+
+For a playlist, select the videos you want to download in the panel.
+
+> After you start a download, the speed may stay at zero for a while before data begins downloading. This is normal: the extension needs to complete YouTube’s PO Token verification first. Please wait; the download will begin automatically once verification is complete.
 
 ![](image/create.gif)
 
+### Playlists
+
+Paste a playlist URL into Gopeed to load its available videos, then select the entries you want to download. Video links download only the current video, even when opened from a playlist.
+
 ### Video Quality
 
-Typically 1080p or better YouTube videos use separate video and audio streams. This extension downloads YouTube media in that separated form by default, so the video file you get is the video track only. If you want a single merged file, use `ffmpeg` to combine the downloaded audio and video.
-
-The extension settings now include:
-
-- `quality`: target video resolution, such as `1080p`, `1440p`, `2160p`, `best`, or `lowest`
-- `qualityFallback`: when the requested resolution is not available, fall back to the highest available video quality
-
-- ffmpeg command
-
-```bash
-ffmpeg -i video.webm -i audio.mp4 -c:v copy -c:a copy output.mp4
-```
+Choose your preferred resolution in the extension settings. Enable **Fallback to Best Quality** to use the highest available quality when your preferred resolution is unavailable.
 
 ## Useful Links
 

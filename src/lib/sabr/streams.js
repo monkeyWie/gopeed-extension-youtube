@@ -17,11 +17,11 @@ function createClientInfo(session) {
 
 function assertPreparedSabrSession(prepared, poToken) {
   if (!prepared || typeof prepared !== 'object' || !prepared.__sabrPrepared) {
-    throw new Error('Invalid prepared SABR session');
+    throw new MessageError('Invalid prepared SABR session');
   }
 
   if (typeof poToken !== 'string' || poToken.length === 0) {
-    throw new Error('poToken is required');
+    throw new MessageError('poToken is required');
   }
 }
 
@@ -32,7 +32,7 @@ async function preparePreparedSabrSessionInternal(prepared, poToken) {
   const info = await prepared.yt.getInfo(prepared.videoId, { po_token: poToken });
 
   if (!info.streaming_data?.server_abr_streaming_url || !info.streaming_data?.adaptive_formats?.length) {
-    throw new Error(
+    throw new MessageError(
       `No SABR streaming data returned. status=${info.playability_status?.status ?? 'unknown'} reason=${
         info.playability_status?.reason ?? ''
       }`
@@ -47,7 +47,7 @@ async function preparePreparedSabrSessionInternal(prepared, poToken) {
     info.player_config?.media_common_config?.media_ustreamer_request_config?.video_playback_ustreamer_config;
 
   if (!ustreamerConfig) {
-    throw new Error('Missing video playback ustreamer config');
+    throw new MessageError('Missing video playback ustreamer config');
   }
 
   const sabrUrl = new URL(decipheredServerAbrStreamingUrl);
@@ -150,7 +150,7 @@ export async function prepareSabrStreams({
   fallbackToBest = false,
 } = {}) {
   if (!input) {
-    throw new Error('Missing YouTube URL or videoId');
+    throw new MessageError('Missing YouTube URL or videoId');
   }
 
   const videoId = extractVideoId(input);
@@ -193,7 +193,7 @@ export async function openSabrStreams({
   fallbackToBest = false,
 } = {}) {
   if (typeof poToken !== 'string' || poToken.length === 0) {
-    throw new Error(
+    throw new MessageError(
       'openSabrStreams requires a poToken. Use prepareSabrStreams() first if you need a poTokenExpression.'
     );
   }

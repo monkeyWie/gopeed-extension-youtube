@@ -6,7 +6,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "dev": "webpack --mode development --watch",
     "build": "webpack --mode production"
   },
@@ -29,7 +29,8 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
-    "bgutils-js": "^3.2.0",
+    "@ungap/structured-clone": "^1.4.0",
+    "bgutils-js": "^4.0.3",
     "googlevideo": "^4.0.4",
     "youtubei.js": "^18.0.0"
   }

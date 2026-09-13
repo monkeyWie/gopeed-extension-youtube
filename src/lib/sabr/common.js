@@ -1,44 +1,34 @@
+import { getCookieHeader } from '../cookies.js';
 import { Innertube, Platform } from 'youtubei.js';
-import bgutilsBundleSource from '../../../node_modules/bgutils-js/bundle/index.cjs?raw';
+import bgutilsBundleSource from '../../../.generated/bgutils.js?raw';
 
 export const DEFAULT_BROWSER_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 const DEFAULT_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 
-Platform.shim.eval = async (data, env) => {
-  const properties = [];
-
-  if (env.n) {
-    properties.push(`n: exportedVars.nFunction(${JSON.stringify(env.n)})`);
-  }
-
-  if (env.sig) {
-    properties.push(`sig: exportedVars.sigFunction(${JSON.stringify(env.sig)})`);
-  }
-
-  const modifiedOutput = data.output.replace('const window = Object.assign({}, globalThis);', '');
-  const code = `const window = globalThis;\n${modifiedOutput}\nreturn {${properties.join(', ')}}`;
-
-  return new Function(code)();
+Platform.shim.eval = async (data) => {
+  // YouTube.js 18 appends its decipher invocation and return statement to output.
+  const output = data.output.replace('const window = Object.assign({}, globalThis);', '');
+  return new Function(`const window = globalThis;\n${output}`)();
 };
 
 export function extractVideoId(value) {
+  let id = value;
   try {
     const url = new URL(value);
-
-    if (url.hostname === 'youtu.be') {
-      return url.pathname.slice(1);
-    }
-
-    if (url.searchParams.has('v')) {
-      return url.searchParams.get('v');
-    }
-  } catch {
-    return value;
+    const host = url.hostname.toLowerCase();
+    if (host === 'youtu.be') id = url.pathname.split('/')[1];
+    else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      id =
+        url.searchParams.get('v') || (/^\/(shorts|embed|live)\//.test(url.pathname) ? url.pathname.split('/')[2] : '');
+    } else id = '';
+  } catch (_) {
+    /* A bare video ID is also accepted. */
   }
-
-  return value;
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id || ''))
+    throw new MessageError('Please enter a valid YouTube video URL or video ID.');
+  return id;
 }
 
 export async function createLocalApiInnertube({
@@ -49,6 +39,7 @@ export async function createLocalApiInnertube({
   userAgent = DEFAULT_BROWSER_USER_AGENT,
 } = {}) {
   return await Innertube.create({
+    cookie: getCookieHeader() || undefined,
     timezone: '',
     enable_session_cache: false,
     retrieve_innertube_config: !generateSessionLocally,
@@ -67,101 +58,21 @@ export function buildPoTokenExpression({
   requestKey = DEFAULT_REQUEST_KEY,
 }) {
   if (!videoId) {
-    throw new Error('videoId is required');
+    throw new MessageError('videoId is required');
   }
 
   if (!context || typeof context !== 'object') {
-    throw new Error('context is required');
+    throw new MessageError('context is required');
   }
 
   if (typeof bundleSource !== 'string' || bundleSource.length === 0) {
-    throw new Error('bgutilsBundleSource is required');
+    throw new MessageError('bgutilsBundleSource is required');
   }
 
   return `(async () => {
-    const bgutilsModule = { exports: {} };
-    (() => {
-      const module = bgutilsModule;
-      const exports = module.exports;
-      ${bundleSource}
-    })();
-
-    const { BG, buildURL: bgutilsBuildURL, GOOG_API_KEY: bgutilsApiKey } = bgutilsModule.exports;
-    const videoId = ${JSON.stringify(videoId)};
-    const context = ${JSON.stringify(context)};
-    const requestKey = ${JSON.stringify(requestKey)};
-
-    const challengeResponse = await fetch('https://www.youtube.com/youtubei/v1/att/get?prettyPrint=false&alt=json', {
-      method: 'POST',
-      headers: {
-        Accept: '*/*',
-        'Content-Type': 'application/json',
-        'X-Goog-Visitor-Id': context.client.visitorData,
-        'X-Youtube-Client-Version': context.client.clientVersion,
-        'X-Youtube-Client-Name': '1'
-      },
-      body: JSON.stringify({
-        engagementType: 'ENGAGEMENT_TYPE_UNBOUND',
-        context
-      })
-    });
-
-    if (!challengeResponse.ok) {
-      throw new Error(\`Request to \${challengeResponse.url} failed with status \${challengeResponse.status}\\n\${await challengeResponse.text()}\`);
-    }
-
-    const challengeData = await challengeResponse.json();
-
-    if (!challengeData.bgChallenge) {
-      throw new Error('Failed to get BotGuard challenge');
-    }
-
-    let interpreterUrl = challengeData.bgChallenge.interpreterUrl.privateDoNotAccessOrElseTrustedResourceUrlWrappedValue;
-
-    if (interpreterUrl.startsWith('//')) {
-      interpreterUrl = \`https:\${interpreterUrl}\`;
-    }
-
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = interpreterUrl;
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new TypeError('Failed to load BotGuard interpreter'));
-      (document.head || document.documentElement || document.body).appendChild(script);
-    });
-
-    const botGuard = await BG.BotGuardClient.create({
-      program: challengeData.bgChallenge.program,
-      globalName: challengeData.bgChallenge.globalName,
-      globalObj: window
-    });
-
-    const webPoSignalOutput = [];
-    const botGuardResponse = await botGuard.snapshot({ webPoSignalOutput }, 10000);
-
-    const integrityTokenResponse = await fetch(bgutilsBuildURL('GenerateIT', true), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json+protobuf',
-        'x-goog-api-key': bgutilsApiKey,
-        'x-user-agent': 'grpc-web-javascript/0.1'
-      },
-      body: JSON.stringify([requestKey, botGuardResponse])
-    });
-
-    const integrityTokenJson = await integrityTokenResponse.json();
-
-    if (typeof integrityTokenJson[0] !== 'string') {
-      throw new Error('Could not get integrity token');
-    }
-
-    const webPoMinter = await BG.WebPoMinter.create({
-      integrityToken: integrityTokenJson[0]
-    }, webPoSignalOutput);
-
-    return await webPoMinter.mintAsWebsafeString(videoId);
-  })()`;
+${bundleSource}
+return await GopeedBgutils.mint(${JSON.stringify(videoId)}, ${JSON.stringify(requestKey)});
+})()`;
 }
 
 export function createPoTokenExpression({ videoId, context } = {}) {
@@ -231,7 +142,7 @@ function parseQuality(quality) {
   const match = normalizedQuality.match(/^(\d+)\s*p?$/);
 
   if (!match) {
-    throw new Error(`Unsupported video quality: ${quality}`);
+    throw new MessageError(`Unsupported video quality: ${quality}`);
   }
 
   return {
@@ -310,13 +221,13 @@ function selectHighestVideoFormat(formats, preferences = {}) {
 
 export function selectVideoFormat(formats, quality = '1080p', preferences = {}, options = {}) {
   if (!Array.isArray(formats) || formats.length === 0) {
-    throw new Error('No video formats available');
+    throw new MessageError('No video formats available');
   }
 
   const videoFormats = formats.filter((format) => isVideoFormat(format));
 
   if (videoFormats.length === 0) {
-    throw new Error('No video formats available');
+    throw new MessageError('No video formats available');
   }
 
   const parsedQuality = parseQuality(quality);
