@@ -48,13 +48,48 @@ function getContentLength(value) {
   return Number.isFinite(length) && length > 0 ? length : undefined;
 }
 
+function createAbortableReadableStream(stream, onCancel) {
+  let reader;
+
+  return new ReadableStream({
+    start() {
+      reader = stream.getReader();
+    },
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(value);
+    },
+    cancel(reason) {
+      if (typeof onCancel === 'function') {
+        onCancel();
+      }
+      return reader?.cancel(reason);
+    },
+  });
+}
+
+async function createStreamObjectURL(openStream, format) {
+  return await gopeed.runtime.blob.createObjectURL(
+    async () => {
+      const { stream, abort } = await openStream();
+      return createAbortableReadableStream(stream, abort);
+    },
+    {
+      contentType: format.mimeType,
+      size: getContentLength(format.contentLength),
+    }
+  );
+}
+
 gopeed.events.onResolve(async (ctx) => {
   const input = ctx.req.url;
 
-  gopeed.logger.info(`Resolving YouTube URL: ${input}`);
-
   const quality = String(getSetting('quality', '1080p'));
-  const fallbackToBest = getBooleanSetting('qualityFallback', false);
+  const fallbackToBest = getBooleanSetting('fallbackToBest', false);
 
   const prepared = await prepareSabrStreams({
     input,
@@ -64,34 +99,17 @@ gopeed.events.onResolve(async (ctx) => {
     fallbackToBest,
   });
 
-  gopeed.logger.info(`Prepared SABR streams for videoId: ${prepared.videoId}`);
-
   const poToken = await executePoTokenExpression(prepared.poTokenExpression);
 
-  gopeed.logger.info(`Obtained PO token of length ${poToken.length} for videoId: ${prepared.videoId}`);
+  const session = await prepared.prepareSession(poToken);
 
-  const result = await prepared.open(poToken);
-
-  gopeed.logger.info(`Opened SABR streams result`);
-  gopeed.logger.info(
-    `Selected formats: video=${result.selectedFormats.videoFormat.itag} ${result.selectedFormats.videoFormat.mimeType}, audio=${result.selectedFormats.audioFormat.itag} ${result.selectedFormats.audioFormat.mimeType}`
-  );
-
-  const title = result.info?.basic_info?.title || result.info?.video_details?.title || prepared.videoId;
+  const title = session.info?.basic_info?.title || session.info?.video_details?.title || prepared.videoId;
   const baseName = sanitizeFileName(title);
-  const videoExtension = getFileExtension(result.selectedFormats.videoFormat.mimeType, 'mp4');
-  const audioExtension = getFileExtension(result.selectedFormats.audioFormat.mimeType, 'm4a');
-  gopeed.logger.info(
-    `Resolved output names: video=${baseName}.video.${videoExtension}, audio=${baseName}.audio.${audioExtension}`
-  );
+  const videoExtension = getFileExtension(session.selectedFormats.videoFormat.mimeType, 'mp4');
+  const audioExtension = getFileExtension(session.selectedFormats.audioFormat.mimeType, 'm4a');
 
-  gopeed.logger.info(`Creating object URL for video stream`);
-  const videoUrl = URL.createObjectURL(result.videoStream);
-  gopeed.logger.info(`Created video object URL`);
-
-  gopeed.logger.info(`Creating object URL for audio stream`);
-  const audioUrl = URL.createObjectURL(result.audioStream);
-  gopeed.logger.info(`Created audio object URL`);
+  const videoUrl = await createStreamObjectURL(session.openVideoStream, session.selectedFormats.videoFormat);
+  const audioUrl = await createStreamObjectURL(session.openAudioStream, session.selectedFormats.audioFormat);
 
   ctx.res = {
     name: baseName,
@@ -101,14 +119,14 @@ gopeed.events.onResolve(async (ctx) => {
         req: {
           url: videoUrl,
         },
-        size: getContentLength(result.selectedFormats.videoFormat.contentLength),
+        size: getContentLength(session.selectedFormats.videoFormat.contentLength),
       },
       {
         name: `${baseName}.audio.${audioExtension}`,
         req: {
           url: audioUrl,
         },
-        size: getContentLength(result.selectedFormats.audioFormat.contentLength),
+        size: getContentLength(session.selectedFormats.audioFormat.contentLength),
       },
     ],
   };

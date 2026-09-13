@@ -1,6 +1,6 @@
 import { Constants } from 'youtubei.js';
 import { SabrStream } from 'googlevideo/sabr-stream';
-import { buildSabrFormat } from 'googlevideo/utils';
+import { buildSabrFormat, EnabledTrackTypes } from 'googlevideo/utils';
 
 import { createLocalApiInnertube, createPoTokenExpression, extractVideoId, selectVideoFormat } from './common.js';
 
@@ -15,7 +15,7 @@ function createClientInfo(session) {
   };
 }
 
-async function openPreparedSabrStreamsInternal(prepared, poToken) {
+function assertPreparedSabrSession(prepared, poToken) {
   if (!prepared || typeof prepared !== 'object' || !prepared.__sabrPrepared) {
     throw new Error('Invalid prepared SABR session');
   }
@@ -23,7 +23,10 @@ async function openPreparedSabrStreamsInternal(prepared, poToken) {
   if (typeof poToken !== 'string' || poToken.length === 0) {
     throw new Error('poToken is required');
   }
+}
 
+async function preparePreparedSabrSessionInternal(prepared, poToken) {
+  assertPreparedSabrSession(prepared, poToken);
   prepared.yt.session.player.po_token = poToken;
 
   const info = await prepared.yt.getInfo(prepared.videoId, { po_token: poToken });
@@ -51,13 +54,13 @@ async function openPreparedSabrStreamsInternal(prepared, poToken) {
   sabrUrl.searchParams.set('alr', 'yes');
   sabrUrl.searchParams.set('cpn', info.cpn);
 
-  const sabr = new SabrStream({
+  const sabrConfig = {
     serverAbrStreamingUrl: sabrUrl.toString(),
     videoPlaybackUstreamerConfig: ustreamerConfig,
     clientInfo: createClientInfo(prepared.yt.session),
     poToken,
     formats: adaptiveFormats,
-  });
+  };
 
   const selectedVideoFormat = selectVideoFormat(
     adaptiveFormats,
@@ -72,12 +75,30 @@ async function openPreparedSabrStreamsInternal(prepared, poToken) {
     }
   );
 
-  const { videoStream, audioStream, selectedFormats } = await sabr.start({
+  const selector = new SabrStream(sabrConfig);
+  const selectedFormats = selector.selectFormats({
     videoFormat: selectedVideoFormat,
     preferMP4: !prepared.preferWebM,
     preferWebM: prepared.preferWebM,
     preferH264: prepared.preferH264,
   });
+
+  const start = async (enabledTrackTypes = EnabledTrackTypes.VIDEO_AND_AUDIO) => {
+    const sabr = new SabrStream(sabrConfig);
+    const streams = await sabr.start({
+      videoFormat: selectedFormats.videoFormat,
+      audioFormat: selectedFormats.audioFormat,
+      preferMP4: !prepared.preferWebM,
+      preferWebM: prepared.preferWebM,
+      preferH264: prepared.preferH264,
+      enabledTrackTypes,
+    });
+
+    return {
+      ...streams,
+      abort: () => sabr.abort(),
+    };
+  };
 
   return {
     videoId: prepared.videoId,
@@ -86,9 +107,38 @@ async function openPreparedSabrStreamsInternal(prepared, poToken) {
     info,
     context: prepared.yt.session.context,
     selectedFormats,
+    openStreams: async () => await start(),
+    openVideoStream: async () => {
+      const streams = await start(EnabledTrackTypes.VIDEO_ONLY);
+      return {
+        stream: streams.videoStream,
+        abort: streams.abort,
+      };
+    },
+    openAudioStream: async () => {
+      const streams = await start(EnabledTrackTypes.AUDIO_ONLY);
+      return {
+        stream: streams.audioStream,
+        abort: streams.abort,
+      };
+    },
+  };
+}
+
+async function openPreparedSabrStreamsInternal(prepared, poToken) {
+  const session = await preparePreparedSabrSessionInternal(prepared, poToken);
+  const { videoStream, audioStream, abort } = await session.openStreams();
+
+  return {
+    videoId: prepared.videoId,
+    poToken,
+    poTokenSource: 'provided',
+    info: session.info,
+    context: session.context,
+    selectedFormats: session.selectedFormats,
     videoStream,
     audioStream,
-    abort: () => sabr.abort(),
+    abort,
   };
 }
 
@@ -120,6 +170,7 @@ export async function prepareSabrStreams({
     poTokenExpression,
     yt,
     open: async (poToken) => await openPreparedSabrStreamsInternal(prepared, poToken),
+    prepareSession: async (poToken) => await preparePreparedSabrSessionInternal(prepared, poToken),
   };
 
   return prepared;
@@ -127,6 +178,10 @@ export async function prepareSabrStreams({
 
 export async function openPreparedSabrStreams(prepared, poToken) {
   return await openPreparedSabrStreamsInternal(prepared, poToken);
+}
+
+export async function preparePreparedSabrSession(prepared, poToken) {
+  return await preparePreparedSabrSessionInternal(prepared, poToken);
 }
 
 export async function openSabrStreams({

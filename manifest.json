@@ -69,8 +69,8 @@
       ]
     },
     {
-      "name": "qualityFallback",
-      "title": "Fallback When Missing",
+      "name": "fallbackToBest",
+      "title": "Fallback to Best Quality",
       "description": "When the requested resolution does not exist, fall back to the highest available video quality.",
       "type": "boolean",
       "value": true

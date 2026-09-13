@@ -1,4 +1,4 @@
-export { openPreparedSabrStreams, openSabrStreams, prepareSabrStreams } from './streams.js';
+export { openPreparedSabrStreams, openSabrStreams, preparePreparedSabrSession, prepareSabrStreams } from './streams.js';
 
 export {
   buildPoTokenExpression,
