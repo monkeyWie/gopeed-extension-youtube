@@ -1,9 +1,9 @@
 import { syncWebViewCookies } from './lib/cookies.js';
 import './polyfills.js';
+import { getBrowserProfile } from './lib/browser.js';
 import { resolveVideo } from './lib/video.js';
 import { extractPlaylistId, resolvePlaylist } from './lib/playlist.js';
 import { prepareSabrStreams } from './lib/sabr/index.js';
-import { DEFAULT_BROWSER_USER_AGENT } from './lib/sabr/common.js';
 
 function messageError(error) {
   return error instanceof MessageError ? error : new MessageError(`YouTube: ${error?.message || String(error)}`);
@@ -25,23 +25,17 @@ function sanitizeFileName(value) {
 }
 
 async function executePoTokenExpression(expression) {
+  const { overrideUserAgent } = await getBrowserProfile();
   const options = {
     headless: true,
     title: 'gopeed-youtube-sabr',
+    ...(overrideUserAgent ? { userAgent: overrideUserAgent } : {}),
     width: 1280,
     height: 800,
   };
-  let page = await gopeed.runtime.webview.open(options);
+  const page = await gopeed.runtime.webview.open(options);
   try {
     await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
-    const userAgent = await page.execute('() => navigator.userAgent');
-    if (/Android/i.test(userAgent)) {
-      // Android's WebView UA gets no integrity token. Keep the native UA on
-      // WebKit platforms: pretending to be Chrome invalidates attestation.
-      await page.close();
-      page = await gopeed.runtime.webview.open({ ...options, userAgent: DEFAULT_BROWSER_USER_AGENT });
-      await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
-    }
     await syncWebViewCookies(page);
     return await page.execute(expression);
   } finally {

@@ -3,7 +3,6 @@ export { openPreparedSabrStreams, openSabrStreams, preparePreparedSabrSession, p
 export {
   buildPoTokenExpression,
   createPoTokenExpression,
-  DEFAULT_BROWSER_USER_AGENT,
   extractVideoId,
   getFileExtension,
   selectVideoFormat,

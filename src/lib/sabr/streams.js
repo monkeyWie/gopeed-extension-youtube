@@ -1,5 +1,6 @@
 import { Constants, Player, Utils } from 'youtubei.js';
 import { SabrStream } from 'googlevideo/sabr-stream';
+import { browserFetch, getBrowserUserAgent } from '../browser.js';
 import { BoundedSabrStream } from './bounded-stream.js';
 import { buildSabrFormat, EnabledTrackTypes } from 'googlevideo/utils';
 
@@ -61,6 +62,7 @@ async function preparePreparedSabrSessionInternal(prepared, poToken) {
     clientInfo: createClientInfo(prepared.yt.session),
     poToken,
     formats: adaptiveFormats,
+    fetch: browserFetch(await getBrowserUserAgent()),
   };
 
   const selectedVideoFormat = selectVideoFormat(

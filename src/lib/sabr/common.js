@@ -1,9 +1,7 @@
 import { getCookieHeader } from '../cookies.js';
+import { getBrowserUserAgent, browserFetch } from '../browser.js';
 import { Innertube, Platform } from 'youtubei.js';
 import bgutilsBundleSource from '../../../.generated/bgutils.js?raw';
-
-export const DEFAULT_BROWSER_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 const DEFAULT_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 
@@ -36,8 +34,8 @@ export async function createLocalApiInnertube({
   clientType = 'WEB',
   generateSessionLocally = false,
   fetchFunc = null,
-  userAgent = DEFAULT_BROWSER_USER_AGENT,
 } = {}) {
+  const userAgent = await getBrowserUserAgent();
   return await Innertube.create({
     cookie: getCookieHeader() || undefined,
     timezone: '',
@@ -46,7 +44,7 @@ export async function createLocalApiInnertube({
     user_agent: userAgent,
     retrieve_player: withPlayer,
     client_type: clientType,
-    fetch: fetchFunc ?? ((input, init) => fetch(input, init)),
+    fetch: browserFetch(userAgent, fetchFunc ?? fetch),
     generate_session_locally: generateSessionLocally,
   });
 }

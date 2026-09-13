@@ -45,11 +45,15 @@ test('all Innertube clients receive the configured Cookie', async () => {
   scope.Platform = { shim: {} };
   scope.Innertube = { create: async (options) => options };
   scope.fetch = () => {};
+  scope.getBrowserUserAgent = async () => "native-UA";
+  scope.browserFetch = (_ua, transport) => transport;
   const common = readFileSync(new URL('../src/lib/sabr/common.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '')
     .replace(/^export /gm, '');
   vm.runInContext(common, scope);
-  assert.equal((await scope.createLocalApiInnertube({ withPlayer: false })).cookie, 'SAPISID=example');
+  const options = await scope.createLocalApiInnertube({ withPlayer: false });
+  assert.equal(options.cookie, 'SAPISID=example');
+  assert.equal(options.user_agent, 'native-UA');
   scope.gopeed.settings.cookie = '';
   assert.equal((await scope.createLocalApiInnertube()).cookie, undefined);
 });

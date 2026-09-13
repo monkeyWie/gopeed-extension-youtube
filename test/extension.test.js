@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
+const browserSource = readFileSync(new URL('../src/lib/browser.js', import.meta.url), 'utf8').replace(/^export /gm, '');
+const browserScope = {};
+vm.runInNewContext(browserSource, browserScope);
+
 const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
 class MessageError extends Error {}
 function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', available = true, missingFFmpeg = false, prepareError, playlist, streamError, metadataError } = {}) {
@@ -72,8 +76,8 @@ function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', ava
     },
   };
   vm.runInNewContext(source, {
+    getBrowserProfile: async () => ({ overrideUserAgent: browserScope.desktopUserAgent(browserUA) === browserUA ? undefined : browserScope.desktopUserAgent(browserUA) }),
     gopeed,
-    DEFAULT_BROWSER_USER_AGENT: 'desktop-browser-test',
     syncWebViewCookies: async () => {},
     extractPlaylistId: () => (playlist ? 'PLtest' : null),
     resolvePlaylist: async () => playlist,
@@ -323,10 +327,9 @@ test('metadata resolution disables player parsing and uses only basic info', asy
   assert.equal((await scope.resolveVideo('https://youtu.be/dQw4w9WgXcQ')).title, 'Title');
 });
 
-test('verification preserves the native UA on WebKit and desktop browsers', async () => {
+test('verification preserves the native UA on desktop browsers', async () => {
   for (const browserUA of [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0',
   ]) {
     const env = setup({ browserUA });
@@ -337,11 +340,11 @@ test('verification preserves the native UA on WebKit and desktop browsers', asyn
   }
 });
 
-test('only Android reopens the verification page with the desktop UA', async () => {
+test('Android uses the shared desktop profile for verification', async () => {
   const env = setup({ browserUA: 'Mozilla/5.0 (Linux; Android 16; device; wv) AppleWebKit/537.36 Version/4.0 Chrome/151.0.0.0 Mobile Safari/537.36' });
   await start(env, await resolve(env));
-  assert.equal(env.calls.webviewOptions.length, 2);
-  assert.equal(env.calls.webviewOptions[0].userAgent, undefined);
-  assert.equal(env.calls.webviewOptions[1].userAgent, 'desktop-browser-test');
-  assert.equal(env.calls.pageCloses, 2);
+  assert.equal(env.calls.webviewOptions.length, 1);
+  assert.match(env.calls.webviewOptions[0].userAgent, /Chrome\/151\.0\.0\.0/);
+  assert.doesNotMatch(env.calls.webviewOptions[0].userAgent, /Android|Mobile|\bwv\b/);
+  assert.equal(env.calls.pageCloses, 1);
 });
