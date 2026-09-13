@@ -3,6 +3,7 @@ import './polyfills.js';
 import { resolveVideo } from './lib/video.js';
 import { extractPlaylistId, resolvePlaylist } from './lib/playlist.js';
 import { prepareSabrStreams } from './lib/sabr/index.js';
+import { DEFAULT_BROWSER_USER_AGENT } from './lib/sabr/common.js';
 
 function messageError(error) {
   return error instanceof MessageError ? error : new MessageError(`YouTube: ${error?.message || String(error)}`);
@@ -27,6 +28,8 @@ async function executePoTokenExpression(expression) {
   const page = await gopeed.runtime.webview.open({
     headless: true,
     title: 'gopeed-youtube-sabr',
+    // Android's default WebView UA receives no integrity token from YouTube.
+    userAgent: DEFAULT_BROWSER_USER_AGENT,
     width: 1280,
     height: 800,
   });

@@ -31,14 +31,17 @@ function setup({ available = true, missingFFmpeg = false, prepareError, playlist
     runtime: {
       webview: {
         isAvailable: () => available,
-        open: async () => ({
-          goto: async () => {},
-          execute: async () => ({
-            poToken: 'token',
-            player: { id: 'test-player', timestamp: 123, data: { output: 'script' } },
-          }),
-          close: async () => {},
-        }),
+        open: async (options) => {
+          assert.equal(options.userAgent, 'desktop-browser-test');
+          return {
+            goto: async () => {},
+            execute: async () => ({
+              poToken: 'token',
+              player: { id: 'test-player', timestamp: 123, data: { output: 'script' } },
+            }),
+            close: async () => {},
+          };
+        },
       },
       blob: {
         createObjectURL: async (open, options) => {
@@ -66,6 +69,7 @@ function setup({ available = true, missingFFmpeg = false, prepareError, playlist
   };
   vm.runInNewContext(source, {
     gopeed,
+    DEFAULT_BROWSER_USER_AGENT: 'desktop-browser-test',
     syncWebViewCookies: async () => {},
     extractPlaylistId: () => (playlist ? 'PLtest' : null),
     resolvePlaylist: async () => playlist,
