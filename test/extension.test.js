@@ -9,7 +9,7 @@ vm.runInNewContext(browserSource, browserScope);
 
 const source = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
 class MessageError extends Error {}
-function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', available = true, missingFFmpeg = false, prepareError, playlist, streamError, metadataError } = {}) {
+function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', available = true, missingFFmpeg = false, legacyFFmpeg = false, prepareError, playlist, streamError, metadataError } = {}) {
   const events = {},
     openers = new Map(),
     revoked = [],
@@ -62,15 +62,24 @@ function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', ava
       ffmpeg: missingFFmpeg
         ? {}
         : {
-            merge: ({ video, audio }) => {
-              calls.inputs = [video, audio];
-              return streamError
-                ? new ReadableStream({
-                    start(c) {
-                      c.error(streamError);
-                    },
-                  })
-                : track();
+            supportsInputFactory: !legacyFFmpeg,
+            merge: ({ inputs }) => {
+              assert.equal(typeof inputs, 'function');
+              const lifetime = new AbortController();
+              let emitted = false;
+              return new ReadableStream({
+                async pull(c) {
+                  if (emitted) { lifetime.abort(); c.close(); return; }
+                  emitted = true;
+                  try {
+                    const { video, audio } = await inputs({ signal: lifetime.signal });
+                    calls.inputs = [video, audio];
+                    if (streamError) throw streamError;
+                    c.enqueue(new Uint8Array([1, 2]));
+                  } catch (error) { lifetime.abort(); c.error(error); }
+                },
+                cancel() { lifetime.abort(); },
+              }, { highWaterMark: 0 });
             },
           },
     },
@@ -87,6 +96,7 @@ function setup({ browserUA = 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15', ava
     },
     MessageError,
     ReadableStream,
+    AbortController,
     prepareSabrStreams: async (options) => {
       assert.equal(options.withPlayer, false);
       if (prepareError) throw prepareError;
@@ -140,7 +150,7 @@ test('one unnamed MP4 resource consumes one SABR stream pair and releases it', a
   assert.equal(env.calls.sessions, 0);
   assert.equal(env.openers.size, 0);
   await start(env, res);
-  assert.equal(env.calls.sessions, 1);
+  assert.equal(env.calls.sessions, 0);
   assert.equal(env.calls.opens, 0);
   const blob = env.openers.get(res.files[0].req.url);
   assert.equal(blob.options.range, false);
@@ -151,7 +161,7 @@ test('one unnamed MP4 resource consumes one SABR stream pair and releases it', a
   assert.equal((await reader.read()).done, true);
   assert.equal(env.calls.opens, 1);
   assert.equal(env.calls.aborts, 1);
-  await (await blob.open()).cancel();
+  await new Response(await blob.open()).arrayBuffer();
   assert.equal(env.calls.sessions, 2);
   assert.equal(env.calls.aborts, 2);
 });
@@ -180,6 +190,7 @@ test('runtime and preparation errors are visible MessageErrors', async () => {
   for (const options of [
     { available: false },
     { missingFFmpeg: true },
+    { legacyFFmpeg: true },
     { metadataError: new Error('upstream failed') },
   ]) {
     await assert.rejects(resolve(setup(options)), MessageError);
@@ -243,19 +254,19 @@ test('playlist has a folder and numbered files, and prepares SABR only on start'
   assert.equal(env.calls.sessions, 0);
   assert.equal(env.openers.size, 0);
   await start(env, res);
-  await (await env.openers.get(res.files[0].req.url).open()).cancel();
+  await new Response(await env.openers.get(res.files[0].req.url).open()).arrayBuffer();
   assert.equal(env.calls.sessions, 1);
 });
 
-test('onStart preparation failure leaves a Blob that fails with MessageError', async () => {
+test('preparation is deferred and its failure reaches the Blob as MessageError', async () => {
   const env = setup({
     playlist: { title: 'Playlist', videos: [{ id: 'dQw4w9WgXcQ', title: 'Video', index: 1 }] },
     prepareError: new Error('unavailable'),
   });
   const res = await resolve(env);
-  await assert.rejects(start(env, res), MessageError);
+  await start(env, res);
   assert.equal(env.openers.size, 1);
-  await assert.rejects(env.openers.get(res.files[0].req.url).open(), MessageError);
+  await assert.rejects(new Response(await env.openers.get(res.files[0].req.url).open()).arrayBuffer(), MessageError);
 });
 
 test('playlist reads continuations, skips unavailable entries and keeps original positions', async () => {
@@ -333,7 +344,9 @@ test('verification preserves the native UA on desktop browsers', async () => {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0',
   ]) {
     const env = setup({ browserUA });
-    await start(env, await resolve(env));
+    const res = await resolve(env);
+    await start(env, res);
+    await new Response(await env.openers.get(res.files[0].req.url).open()).arrayBuffer();
     assert.equal(env.calls.webviewOptions.length, 1);
     assert.equal(env.calls.webviewOptions[0].userAgent, undefined);
     assert.equal(env.calls.pageCloses, 1);
@@ -342,7 +355,9 @@ test('verification preserves the native UA on desktop browsers', async () => {
 
 test('Android uses the shared desktop profile for verification', async () => {
   const env = setup({ browserUA: 'Mozilla/5.0 (Linux; Android 16; device; wv) AppleWebKit/537.36 Version/4.0 Chrome/151.0.0.0 Mobile Safari/537.36' });
-  await start(env, await resolve(env));
+  const res = await resolve(env);
+    await start(env, res);
+    await new Response(await env.openers.get(res.files[0].req.url).open()).arrayBuffer();
   assert.equal(env.calls.webviewOptions.length, 1);
   assert.match(env.calls.webviewOptions[0].userAgent, /Chrome\/151\.0\.0\.0/);
   assert.doesNotMatch(env.calls.webviewOptions[0].userAgent, /Android|Mobile|\bwv\b/);

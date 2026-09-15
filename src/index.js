@@ -24,7 +24,11 @@ function sanitizeFileName(value) {
   return (value || 'youtube').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'youtube';
 }
 
-async function executePoTokenExpression(expression) {
+function checkCancelled(signal) {
+  if (signal?.aborted) throw new MessageError('YouTube download cancelled.');
+}
+
+async function executePoTokenExpression(expression, signal) {
   const { overrideUserAgent } = await getBrowserProfile();
   const options = {
     headless: true,
@@ -33,13 +37,20 @@ async function executePoTokenExpression(expression) {
     width: 1280,
     height: 800,
   };
+  checkCancelled(signal);
   const page = await gopeed.runtime.webview.open(options);
+  let closing;
+  const close = () => closing ||= page.close();
+  const onAbort = () => { void close().catch(() => {}); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
+    checkCancelled(signal);
     await page.goto('https://www.youtube.com/robots.txt', { timeoutMs: 30000 });
     await syncWebViewCookies(page);
     return await page.execute(expression);
   } finally {
-    await page.close();
+    signal?.removeEventListener('abort', onAbort);
+    await close();
   }
 }
 
@@ -69,16 +80,18 @@ function getBooleanSetting(name, fallback = false) {
 function requireRuntime() {
   if (
     typeof gopeed.runtime?.ffmpeg?.merge !== 'function' ||
+    gopeed.runtime.ffmpeg.supportsInputFactory !== true ||
     typeof gopeed.runtime?.blob?.createObjectURL !== 'function'
   ) {
-    throw new MessageError('Please upgrade Gopeed to a build with FFmpeg WASM and Blob support.');
+    throw new MessageError('Please upgrade Gopeed to a build with FFmpeg input factory support.');
   }
   if (typeof gopeed.runtime?.webview?.isAvailable !== 'function' || !gopeed.runtime.webview.isAvailable()) {
     throw new MessageError('YouTube SABR downloads require an available Gopeed WebView runtime.');
   }
 }
 
-async function prepareSession(input, quality, fallbackToBest) {
+async function prepareSession(input, quality, fallbackToBest, signal) {
+  checkCancelled(signal);
   const prepared = await prepareSabrStreams({
     input,
     quality,
@@ -87,7 +100,9 @@ async function prepareSession(input, quality, fallbackToBest) {
     fallbackToBest,
     withPlayer: false,
   });
-  const verification = await executePoTokenExpression(prepared.poTokenExpression);
+  checkCancelled(signal);
+  const verification = await executePoTokenExpression(prepared.poTokenExpression, signal);
+  checkCancelled(signal);
   return await prepared.prepareSession(verification);
 }
 
@@ -129,22 +144,33 @@ function abortableOutput(stream, abort) {
   });
 }
 
-async function createMergedURL(labels, initialSession) {
+async function createMergedURL(labels) {
   const { input, quality, fallbackToBest } = labels;
-  let firstSession = initialSession;
   return await gopeed.runtime.blob.createObjectURL(
-    userFacing(async () => {
-      // Each open starts a fresh SABR producer; stream readers are never reused.
-      const session = await (firstSession ? firstSession() : prepareSession(input, quality, fallbackToBest === 'true'));
-      firstSession = undefined;
-      const { videoStream, audioStream, abort } = await session.openStreams();
-      try {
-        return abortableOutput(gopeed.runtime.ffmpeg.merge({ video: videoStream, audio: audioStream }), abort);
-      } catch (error) {
-        abort();
-        throw error;
-      }
-    }),
+    () => {
+      let producer;
+      let stopped = false;
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        producer?.abort();
+      };
+      const output = gopeed.runtime.ffmpeg.merge({
+        inputs: userFacing(async ({ signal }) => {
+          // FFmpeg reserves capacity before any session preparation or media requests.
+          const session = await prepareSession(input, quality, fallbackToBest === 'true', signal);
+          if (signal.aborted) throw new Error('Download cancelled');
+          producer = await session.openStreams();
+          if (signal.aborted || stopped) {
+            producer.abort();
+            throw new Error('Download cancelled');
+          }
+          signal.addEventListener('abort', stop, { once: true });
+          return { video: producer.videoStream, audio: producer.audioStream };
+        }),
+      });
+      return abortableOutput(output, stop);
+    },
     { contentType: 'video/mp4', range: false }
   );
 }
@@ -153,13 +179,7 @@ async function refreshMergedURL(task) {
   requireRuntime();
   const req = task.meta.req;
   const previous = req.url;
-  let session;
-  let failure = new MessageError('YouTube download preparation did not complete.');
-  // onStart errors do not stop the downloader: install a fail-closed URL first.
-  const next = await createMergedURL(req.labels, async () => {
-    if (!session) throw failure;
-    return session;
-  });
+  const next = await createMergedURL(req.labels);
   try {
     await task.setUrl(next);
   } catch (error) {
@@ -170,12 +190,6 @@ async function refreshMergedURL(task) {
     if (previous !== req.labels.input) await gopeed.runtime.blob.revokeObjectURL(previous);
   } catch (_) {
     /* A registration from a previous Gopeed process has expired. */
-  }
-  try {
-    session = await prepareSession(req.labels.input, req.labels.quality, req.labels.fallbackToBest === 'true');
-  } catch (error) {
-    failure = messageError(error);
-    throw failure;
   }
 }
 
