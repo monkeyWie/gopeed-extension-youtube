@@ -47,6 +47,7 @@ test('all Innertube clients receive the configured Cookie', async () => {
   scope.fetch = () => {};
   scope.getBrowserUserAgent = async () => "native-UA";
   scope.browserFetch = (_ua, transport) => transport;
+  scope.sha1Hash = async () => 'sha1-test';
   const common = readFileSync(new URL('../src/lib/sabr/common.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '')
     .replace(/^export /gm, '');

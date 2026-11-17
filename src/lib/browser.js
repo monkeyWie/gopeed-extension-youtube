@@ -59,6 +59,12 @@ export function browserFetch(userAgent, transport = fetch) {
   return (input, init = {}) => {
     const headers = new Headers(init.headers ?? input?.headers);
     headers.set('User-Agent', userAgent);
+    // Non-browser fetch does not attach Origin like a browser page would, and
+    // YouTube rejects authenticated player requests without it (bot check).
+    const url = typeof input === 'string' ? input : (input?.url ?? input?.href ?? '');
+    if (headers.has('Authorization') && url.startsWith('https://www.youtube.com/')) {
+      headers.set('Origin', 'https://www.youtube.com');
+    }
     return transport(input, { ...init, headers });
   };
 }

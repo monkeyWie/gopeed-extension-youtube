@@ -112,3 +112,57 @@ test('iOS conversion keeps WebKit/Safari instead of introducing Chrome', () => {
   assert.equal(ua, 'Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/604.1');
   assert.doesNotMatch(ua, /Chrome/);
 });
+
+test('browserFetch adds Origin only for authenticated youtube.com requests', async () => {
+  const source = readFileSync(new URL('../src/lib/browser.js', import.meta.url), 'utf8')
+    .replace(/^export /gm, '');
+  const scope = { Headers, MessageError: Error, gopeed: { runtime: { webview: { isAvailable: () => true } } } };
+  vm.createContext(scope);
+  vm.runInContext(source, scope);
+
+  const cases = [
+    {
+      name: 'authenticated player request gets Origin',
+      input: 'https://www.youtube.com/youtubei/v1/player?key=AIzaSy',
+      headers: { Authorization: 'SAPISIDHASH 1700000000_a1b2c3' },
+      wantOrigin: true,
+    },
+    {
+      name: 'authenticated request to another domain gets no Origin',
+      input: 'https://example.com/api/data',
+      headers: { Authorization: 'SAPISIDHASH 1700000000_a1b2c3' },
+      wantOrigin: false,
+    },
+    {
+      name: 'unauthenticated youtube request gets no Origin',
+      input: 'https://www.youtube.com/watch?v=abc',
+      headers: {},
+      wantOrigin: false,
+    },
+    {
+      name: 'request object with url also gets Origin',
+      input: { url: 'https://www.youtube.com/youtubei/v1/att/get', headers: { Authorization: 'SAPISIDHASH 1_x' } },
+      headers: undefined,
+      wantOrigin: true,
+    },
+  ];
+
+  for (const tc of cases) {
+    let captured;
+    const transport = (input, init) => {
+      captured = new Headers(init.headers ?? input?.headers);
+      return Promise.resolve({ ok: true });
+    };
+    await scope.browserFetch('Mozilla/5.0 test', transport)(tc.input, { headers: tc.headers });
+    assert.ok(captured, tc.name);
+    assert.equal(captured.get('User-Agent'), 'Mozilla/5.0 test', tc.name);
+    assert.equal(
+      captured.has('Origin'),
+      tc.wantOrigin,
+      `${tc.name}: Origin ${tc.wantOrigin ? 'missing' : 'unexpectedly set'}`,
+    );
+    if (tc.wantOrigin) {
+      assert.equal(captured.get('Origin'), 'https://www.youtube.com', tc.name);
+    }
+  }
+});

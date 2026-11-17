@@ -237,7 +237,7 @@ test('YouTube.js 18 evaluator returns the result appended by the library', async
     .replace(/^import .*;\n/gm, '')
     .replace(/^export /gm, '');
   const Platform = { shim: {} };
-  vm.runInNewContext(common, { Platform, MessageError, URL });
+  vm.runInNewContext(common, { Platform, MessageError, URL, sha1Hash: async () => 'sha1-test' });
   const result = await Platform.shim.eval({
     output: 'const window = Object.assign({}, globalThis);\nreturn { n: "decoded", sig: "signature" };',
   });

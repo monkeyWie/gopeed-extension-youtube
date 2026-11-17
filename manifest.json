@@ -4,7 +4,7 @@
   "title": "Youtube",
   "description": "Download YouTube videos, playlists, and Shorts in up to 8K quality when available.",
   "icon": "icon.png",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "homepage": "https://github.com/monkeyWie/gopeed-extension-youtube",
   "repository": {
     "url": "https://github.com/monkeyWie/gopeed-extension-youtube"
@@ -31,14 +31,18 @@
     {
       "event": "onStart",
       "match": {
-        "labels": ["monkeyWie@youtube"]
+        "labels": [
+          "monkeyWie@youtube"
+        ]
       },
       "entry": "dist/index.js"
     },
     {
       "event": "onError",
       "match": {
-        "labels": ["monkeyWie@youtube"]
+        "labels": [
+          "monkeyWie@youtube"
+        ]
       },
       "entry": "dist/index.js"
     }

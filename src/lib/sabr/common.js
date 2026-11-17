@@ -2,8 +2,13 @@ import { getCookieHeader } from '../cookies.js';
 import { getBrowserUserAgent, browserFetch } from '../browser.js';
 import { Innertube, Platform } from 'youtubei.js';
 import bgutilsBundleSource from '../../../.generated/bgutils.js?raw';
+import { sha1Hash } from '../sha1.js';
 
 const DEFAULT_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
+
+// The Gopeed extension runtime has no crypto.subtle, so Cookie authentication
+// (SAPISIDHASH) cannot hash with the browser shim; use a pure JS SHA-1.
+Platform.shim.sha1Hash = sha1Hash;
 
 Platform.shim.eval = async (data) => {
   // YouTube.js 18 appends its decipher invocation and return statement to output.
